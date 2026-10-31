@@ -6,6 +6,7 @@ import CategoryScoreCard from '../components/CategoryScoreCard';
 import VerdictCard from '../components/VerdictCard';
 import ImprovementCard from '../components/ImprovementCard';
 import TomorrowChallengeCard from '../components/TomorrowChallengeCard';
+import AudioJudgeVoice from '../components/AudioJudgeVoice';
 import ShareModal from '../components/ShareModal';
 import { judgeAPI } from '../services/api';
 import confetti from 'canvas-confetti';
@@ -162,11 +163,17 @@ export const JudgementResultPage = () => {
             />
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-4">
             <VerdictCard
               verdict={judgement.verdict}
               personality={personality}
               confidence={judgement.confidence}
+            />
+            <AudioJudgeVoice
+              verdict={judgement.verdict}
+              personality={personality}
+              score={judgement.overallScore}
+              label={judgement.performanceLabel}
             />
           </div>
         </div>
