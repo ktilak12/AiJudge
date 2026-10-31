@@ -9,6 +9,8 @@ import TomorrowChallengeCard from '../components/TomorrowChallengeCard';
 import AudioJudgeVoice from '../components/AudioJudgeVoice';
 import ShareModal from '../components/ShareModal';
 import { judgeAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { exportVerdictPDF } from '../utils/pdfExport';
 import confetti from 'canvas-confetti';
 import {
   Gavel,
@@ -21,12 +23,14 @@ import {
   ChevronRight,
   ShieldCheck,
   CheckCircle2,
-  PlusCircle
+  PlusCircle,
+  Download
 } from 'lucide-react';
 
 export const JudgementResultPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [judgement, setJudgement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -128,6 +132,14 @@ export const JudgementResultPage = () => {
 
           {/* Quick Result Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => exportVerdictPDF({ judgement, userName: user?.name })}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-secondary-bg hover:bg-card-hover border border-border-subtle text-primary-text transition"
+              title="Download Official Supreme Court Decree"
+            >
+              <Download className="w-4 h-4 text-accent-red" />
+              <span>Export PDF Decree</span>
+            </button>
             <button
               onClick={() => setShareOpen(true)}
               className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-secondary-bg hover:bg-card-hover border border-border-subtle text-primary-text transition"
