@@ -10,7 +10,10 @@ import entryRoutes from './routes/entryRoutes.js';
 import judgeRoutes from './routes/judgeRoutes.js';
 import weeklyRoutes from './routes/weeklyRoutes.js';
 
-dotenv.config();
+const isTestEnv = process.env.NODE_ENV === 'test';
+if (!isTestEnv) {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
