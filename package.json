@@ -1,0 +1,25 @@
+{
+  "name": "life-judge-ai",
+  "version": "1.0.0",
+  "description": "LIFE JUDGE AI - Your Life. Your Decisions. Your Consequences.",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "start": "npm run start --prefix server"
+  },
+  "keywords": [
+    "ai",
+    "judge",
+    "productivity",
+    "gemini",
+    "mern"
+  ],
+  "author": "LIFE JUDGE AI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
