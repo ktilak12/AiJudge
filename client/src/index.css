@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    @apply bg-background text-primary-text font-sans antialiased selection:bg-accent-red selection:text-white min-h-screen;
+    background-image: 
+      radial-gradient(circle at 50% 0%, rgba(239, 68, 68, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(249, 115, 22, 0.04) 0%, transparent 40%),
+      linear-gradient(to bottom, #090909, #0d0d0d);
+    background-attachment: fixed;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090909;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ef4444;
+}
+
+/* Cyberpunk grid overlay */
+.cyber-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.glow-border {
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 15px -3px rgba(239, 68, 68, 0.15);
+}
+
+.glow-border:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 25px -2px rgba(239, 68, 68, 0.25);
+}
+
+/* Neon text shadows */
+.text-glow-red {
+  text-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+}
+
+.text-glow-orange {
+  text-shadow: 0 0 15px rgba(249, 115, 22, 0.5);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 15px rgba(34, 197, 94, 0.5);
+}
