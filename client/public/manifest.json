@@ -1,0 +1,19 @@
+{
+  "name": "LIFE JUDGE AI",
+  "short_name": "LifeJudge",
+  "description": "Your Life. Your Decisions. Your Consequences. Brutally honest personal accountability powered by AI.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090909",
+  "theme_color": "#090909",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "lifestyle", "utilities"]
+}
