@@ -28,7 +28,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests with no origin like mobile apps, curl, postman
       if (!origin) return callback(null, true);
       if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost:')) {
         return callback(null, true);
@@ -70,14 +69,16 @@ app.use('*', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
-const server = app.listen(PORT, () => {
-  console.log(`[LIFE JUDGE AI] Server is running on port ${PORT}`);
-  console.log(`[LIFE JUDGE AI] Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+let server;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, () => {
+    console.log(`[LIFE JUDGE AI] Server is running on port ${PORT}`);
+    console.log(`[LIFE JUDGE AI] Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
 
 process.on('unhandledRejection', (err) => {
   console.error(`[Unhandled Rejection Error]: ${err.message}`);
 });
 
 export default app;
-
