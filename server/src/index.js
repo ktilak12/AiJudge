@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
+import { seedDemoUser } from './config/seedDemo.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // Route imports
@@ -18,8 +19,11 @@ if (!isTestEnv) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Connect to Database
-connectDB();
+// Connect to Database and Seed Demo Profile
+await connectDB();
+if (!isTestEnv) {
+  await seedDemoUser();
+}
 
 // CORS configuration
 const allowedOrigins = [
@@ -73,7 +77,7 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 let server;
-if (process.env.NODE_ENV !== 'test') {
+if (!isTestEnv && process.env.NODE_ENV !== 'test') {
   server = app.listen(PORT, () => {
     console.log(`[LIFE JUDGE AI] Server is running on port ${PORT}`);
     console.log(`[LIFE JUDGE AI] Environment: ${process.env.NODE_ENV || 'development'}`);
