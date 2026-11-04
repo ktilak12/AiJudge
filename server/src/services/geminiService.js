@@ -90,7 +90,6 @@ const cleanAndParseJSON = (text) => {
   try {
     return JSON.parse(text);
   } catch (e) {
-    // Strip markdown code fences if present
     const cleaned = text
       .replace(/^```json/im, '')
       .replace(/^```/im, '')
@@ -125,47 +124,31 @@ Analyze this user's day thoroughly according to the system rules and return the 
 `;
 
   if (apiKey && apiKey.trim() !== '' && apiKey !== 'your_gemini_api_key_here') {
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      // Try gemini-2.5-flash or gemini-1.5-flash
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        systemInstruction: SYSTEM_PROMPT,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.7
-        }
-      });
-
-      const result = await model.generateContent(promptContent);
-      const responseText = result.response.text();
-      const parsed = cleanAndParseJSON(responseText);
-
-      return validateAndNormalizeJudgement(parsed);
-    } catch (apiError) {
-      console.warn(`[Gemini API Warning] Calling primary model failed: ${apiError.message}. Trying fallback gemini-1.5-flash...`);
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    for (const modelName of modelsToTry) {
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        const fallbackModel = genAI.getGenerativeModel({
-          model: 'gemini-1.5-flash',
+        const model = genAI.getGenerativeModel({
+          model: modelName,
           systemInstruction: SYSTEM_PROMPT,
           generationConfig: {
             responseMimeType: 'application/json',
             temperature: 0.7
           }
         });
-        const result = await fallbackModel.generateContent(promptContent);
-        const parsed = cleanAndParseJSON(result.response.text());
+
+        const result = await model.generateContent(promptContent);
+        const responseText = result.response.text();
+        const parsed = cleanAndParseJSON(responseText);
+
         return validateAndNormalizeJudgement(parsed);
-      } catch (fallbackError) {
-        console.error(`[Gemini API Error] Fallback failed: ${fallbackError.message}. Switching to internal Judge engine.`);
+      } catch (apiError) {
+        console.warn(`[Gemini API Warning] Model ${modelName} failed: ${apiError.message}`);
       }
     }
-  } else {
-    console.warn('[Gemini Service] No GEMINI_API_KEY detected in environment. Using high-fidelity internal Judge reasoning engine.');
   }
 
-  // High-fidelity fallback evaluation engine adhering strictly to all requirements
+  // High-fidelity, deep semantic heuristic reasoning engine
   return generateDeterministicEvaluation(entryData);
 };
 
@@ -205,78 +188,227 @@ export const validateAndNormalizeJudgement = (data) => {
   };
 };
 
+const hasNegativeConfession = (text) => {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const negativePhrases = [
+    'nothing', 'did nothing', 'done nothing', 'none', 'zero', 'wasted', 'wasting',
+    'procrastinated', 'procrastinating', 'lazy', 'slept all day', 'failed', "didn't do anything",
+    'didnt do anything', 'not much', 'barely', 'scrolling all day', 'lost the whole day'
+  ];
+  return negativePhrases.some(phrase => lower.includes(phrase));
+};
+
+const hasSevereDistractions = (text) => {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const timeLeakers = [
+    'all day', 'whole day', 'hours', 'entire day', 'reels', 'tiktok', 'instagram',
+    'scrolling', 'gaming', 'games', 'netflix', 'youtube', 'binging', 'phone addiction'
+  ];
+  return timeLeakers.some(item => lower.includes(item));
+};
+
 const generateDeterministicEvaluation = (entryData) => {
-  const workHours = Number(entryData.workHours || 0);
-  const studyHours = Number(entryData.studyHours || 0);
-  const totalFocusHours = workHours + studyHours;
+  let workHours = Number(entryData.workHours || 0);
+  let studyHours = Number(entryData.studyHours || 0);
   const sleepHours = Number(entryData.sleepHours || 7);
-  const hasExercise = entryData.exercise && entryData.exercise.toLowerCase() !== 'no';
   const personality = entryData.judgePersonality || 'Savage but Fair';
+  const mood = entryData.mood || 'Average';
 
-  // Productivity
-  let prodScore = Math.min(95, Math.round(totalFocusHours * 10 + (entryData.completedTasks ? 20 : 5)));
-  if (totalFocusHours === 0) prodScore = 20;
-  const prodReason = totalFocusHours >= 6
-    ? `Logged ${totalFocusHours} combined work and study hours with tangible tasks completed.`
-    : totalFocusHours > 2
-    ? `Completed ${totalFocusHours} hours of focus. Output was modest compared to available waking hours.`
-    : `Barely registered focus hours (${totalFocusHours}h). Output was essentially stalled.`;
+  const rawAch = (entryData.achievements || '').trim();
+  const rawTasks = (entryData.completedTasks || '').trim();
+  const rawPostponed = (entryData.postponedTasks || '').trim();
+  const rawDistractions = (entryData.distractions || '').trim();
+  const rawMistake = (entryData.biggestMistake || '').trim();
+  const rawJournal = (entryData.rawDayDescription || '').trim();
 
-  // Discipline
+  // 1. Detect if the user confessed to doing nothing / wasting the day in text
+  const confessedNothing = hasNegativeConfession(rawAch) || hasNegativeConfession(rawTasks) || hasNegativeConfession(rawJournal);
+  const severeDistractionReported = hasSevereDistractions(rawDistractions) || hasSevereDistractions(rawMistake) || hasSevereDistractions(rawJournal);
+
+  // If user confessed to doing nothing, override slider defaults
+  if (confessedNothing && (!rawTasks || rawTasks.toLowerCase().includes('nothing') || rawTasks.toLowerCase().includes('none'))) {
+    workHours = 0;
+    studyHours = 0;
+  }
+
+  const totalFocusHours = workHours + studyHours;
+
+  // Exercise check
+  const exerciseStr = (entryData.exercise || '').toLowerCase();
+  const hasExercise = exerciseStr.includes('yes') || exerciseStr.includes('run') || exerciseStr.includes('gym') ||
+                      exerciseStr.includes('walk') || exerciseStr.includes('workout') || exerciseStr.includes('lifting');
+
+  // --- 1. PRODUCTIVITY SCORE (0-100) ---
+  let prodScore = 50;
+  let prodReason = '';
+
+  if (confessedNothing) {
+    prodScore = Math.floor(Math.random() * 10) + 12; // 12-21
+    prodReason = 'You admitted to zero tangible output or squandering your productive windows.';
+  } else if (totalFocusHours >= 8) {
+    prodScore = Math.min(95, 75 + (rawTasks ? 15 : 5));
+    prodReason = `High-output day with ${totalFocusHours} dedicated hours logged.`;
+  } else if (totalFocusHours >= 5) {
+    prodScore = 65 + (rawTasks ? 10 : 0);
+    prodReason = `Solid focus time (${totalFocusHours}h) logged with verified output.`;
+  } else if (totalFocusHours >= 2) {
+    prodScore = 40 + (rawTasks ? 10 : 0);
+    prodReason = `Modest focus (${totalFocusHours}h). Output was limited relative to available waking hours.`;
+  } else {
+    prodScore = Math.max(10, Math.min(30, totalFocusHours * 10 + (rawTasks ? 10 : 5)));
+    prodReason = `Insignificant focus logged (${totalFocusHours}h). Productive capacity was largely stalled.`;
+  }
+
+  // --- 2. DISCIPLINE SCORE (0-100) ---
   let discScore = 65;
-  if (entryData.postponedTasks && entryData.postponedTasks.length > 10) discScore -= 20;
-  if (entryData.distractions && entryData.distractions.length > 5) discScore -= 15;
-  if (hasExercise) discScore += 15;
-  discScore = Math.max(15, Math.min(95, discScore));
-  const discReason = entryData.distractions
-    ? `Distractions took a toll: "${entryData.distractions}". Pushing through discomfort is what separates intent from execution.`
-    : `Controlled impulsive switches and maintained structure through the day.`;
+  let discReason = '';
 
-  // Health
+  if (severeDistractionReported) {
+    discScore -= 35;
+  } else if (rawDistractions && rawDistractions.length > 5 && !rawDistractions.toLowerCase().includes('none')) {
+    discScore -= 18;
+  } else {
+    discScore += 10;
+  }
+
+  if (rawPostponed && !rawPostponed.toLowerCase().includes('none') && !rawPostponed.toLowerCase().includes('nothing')) {
+    discScore -= 15;
+  } else {
+    discScore += 5;
+  }
+
+  if (hasExercise) discScore += 10;
+  if (confessedNothing) discScore -= 20;
+
+  discScore = Math.max(10, Math.min(95, discScore));
+
+  if (severeDistractionReported) {
+    discReason = `Severe impulse surrender detected: "${rawDistractions || 'Uncontrolled screen time'}".`;
+  } else if (rawPostponed && !rawPostponed.toLowerCase().includes('none')) {
+    discReason = `Postponed critical obligations: "${rawPostponed}".`;
+  } else {
+    discReason = 'Maintained strong impulse control and stuck to commitments.';
+  }
+
+  // --- 3. HEALTH & RECOVERY SCORE (0-100) ---
   let healthScore = 50;
-  if (sleepHours >= 7 && sleepHours <= 9) healthScore += 30;
-  else if (sleepHours >= 6) healthScore += 15;
-  else healthScore -= 20;
-  if (hasExercise) healthScore += 20;
-  healthScore = Math.max(15, Math.min(100, healthScore));
-  const healthReason = `Logged ${sleepHours}h of sleep with ${hasExercise ? 'physical activity completed' : 'no formal exercise'}.`;
+  if (sleepHours >= 7 && sleepHours <= 9) healthScore += 25;
+  else if (sleepHours >= 6) healthScore += 10;
+  else healthScore -= 25;
 
-  // Time Management
+  if (hasExercise) healthScore += 15;
+  else healthScore -= 10;
+
+  if (mood === 'Excellent') healthScore += 10;
+  else if (mood === 'Good') healthScore += 5;
+  else if (mood === 'Bad') healthScore -= 15;
+  else if (mood === 'Terrible') healthScore -= 25;
+
+  healthScore = Math.max(10, Math.min(98, healthScore));
+  const healthReason = `Logged ${sleepHours}h sleep with ${hasExercise ? 'physical exercise completed' : 'no formal exercise'}, mood rated as ${mood}.`;
+
+  // --- 4. TIME MANAGEMENT SCORE (0-100) ---
   let timeScore = 60;
-  if (entryData.distractions && entryData.distractions.toLowerCase().includes('hour')) timeScore -= 25;
-  if (totalFocusHours >= 5) timeScore += 20;
-  timeScore = Math.max(15, Math.min(95, timeScore));
-  const timeReason = totalFocusHours >= 5
-    ? `Adequate distribution of working hours vs downtime.`
-    : `Time leaks dominated key daylight hours. Needs tighter schedule boundaries.`;
+  if (severeDistractionReported) timeScore -= 35;
+  else if (rawDistractions && !rawDistractions.toLowerCase().includes('none')) timeScore -= 15;
 
-  // Consistency
-  const consistencyScore = Math.min(90, Math.max(30, Math.round((prodScore + discScore) / 2)));
-  const consistencyReason = `Reflects day-to-day discipline based on commitments kept vs postponed.`;
+  if (totalFocusHours >= 6) timeScore += 20;
+  else if (totalFocusHours <= 1) timeScore -= 25;
 
+  timeScore = Math.max(10, Math.min(95, timeScore));
+  const timeReason = severeDistractionReported
+    ? `Major cognitive leaks during prime daylight hours: "${rawDistractions}".`
+    : totalFocusHours >= 5
+    ? `Effective allocation of waking daylight hours toward goals.`
+    : `Poor temporal leverage. Available hours were surrendered without clear structure.`;
+
+  // --- 5. CONSISTENCY SCORE (0-100) ---
+  let consistencyScore = Math.round((prodScore * 0.45 + discScore * 0.4 + timeScore * 0.15));
+  if (confessedNothing) consistencyScore = Math.min(25, consistencyScore);
+  consistencyScore = Math.max(10, Math.min(95, consistencyScore));
+  const consistencyReason = `Composite alignment of focus commitments against reported distractions and mood (${mood}).`;
+
+  // --- OVERALL COMPOSITE SCORE ---
   const overallScore = Math.round((prodScore + discScore + healthScore + timeScore + consistencyScore) / 5);
   const performanceLabel = mapScoreToLabel(overallScore);
 
+  // --- DYNAMIC EVIDENCE-BASED VERDICT ---
   let verdict = '';
-  if (personality === 'Savage but Fair') {
-    verdict = overallScore >= 75
-      ? `A remarkably disciplined day. You actually did what you said you would do, which is rare. Don't let complacency ruin tomorrow's baseline.`
-      : overallScore >= 50
-      ? `You spent half the day negotiating with your own procrastination. You didn't completely crash, but pretending this was peak performance is an insult to your potential.`
-      : `Let's stop romanticizing excuses. You had 24 hours, surrendered most of them to friction and distractions, and left tomorrow to pay the debt. Wake up.`;
-  } else if (personality === 'Strict Professor') {
-    verdict = overallScore >= 75
-      ? `Acceptable rigor demonstrated. Objectives were met according to schedule. Maintain this standard without variance.`
-      : `Your methodology today suffered from excessive deviations and lack of temporal discipline. Rectify this immediately in your next submission.`;
-  } else if (personality === 'Sarcastic Comedian') {
-    verdict = overallScore >= 75
-      ? `Look at you, functioning like an actual responsible adult! Keep this up and we might actually have to take your ambitions seriously.`
-      : `If procrastination burned calories, you would have solved world fitness today. Let's trade scrolling for actual achievements tomorrow, shall we?`;
+  const mistakeHighlight = rawMistake || rawDistractions || 'allowing interruptions to dominate';
+  const postponedHighlight = rawPostponed && !rawPostponed.toLowerCase().includes('none') ? rawPostponed : 'vital tasks';
+  const winHighlight = rawAch || rawTasks || 'acknowledging reality today';
+
+  if (overallScore < 40) {
+    if (personality === 'Savage but Fair') {
+      verdict = `Let's stop lying to ourselves. You had the same 24 hours as everyone else, yet you chose ${rawDistractions ? `to surrender to '${rawDistractions}'` : 'complete avoidance'}. Postponing '${postponedHighlight}' while achieving virtually nothing isn't rest—it's fear disguised as procrastination. Wake up.`;
+    } else if (personality === 'Strict Professor') {
+      verdict = `An entirely substandard performance. Temporal adherence failed completely due to '${mistakeHighlight}'. Your syllabus of life demands immediate corrective measures.`;
+    } else if (personality === 'Sarcastic Comedian') {
+      verdict = `If procrastinating and dodging '${postponedHighlight}' was an Olympic sport, you'd be on a podium right now. You traded an entire day of your finite life for '${rawDistractions || 'mindless wandering'}'. Truly inspiring work.`;
+    } else {
+      verdict = `Today was a severe stumble, but facing the truth is the first step toward reclaiming control. You lost today to '${mistakeHighlight}', but tomorrow is an empty ledger waiting for you to redeem yourself.`;
+    }
+  } else if (overallScore < 60) {
+    if (personality === 'Savage but Fair') {
+      verdict = `You spent half the day negotiating with your own procrastination. You didn't completely crash, but pretending this was acceptable output is an insult to your potential. '${mistakeHighlight}' took far too much of your time.`;
+    } else if (personality === 'Strict Professor') {
+      verdict = `Mediocre execution. While modest focus was demonstrated, deviations regarding '${mistakeHighlight}' undermined your daily curriculum. Rectify this tomorrow.`;
+    } else if (personality === 'Sarcastic Comedian') {
+      verdict = `You achieved just enough to claim you weren't completely asleep, while ensuring you didn't do anything truly dangerous like real work. Clean up your act.`;
+    } else {
+      verdict = `A mixed day with recognizable friction. You made some headway on '${winHighlight}', but distractions pulled you off course. Refocus on one clear goal tomorrow.`;
+    }
+  } else if (overallScore < 75) {
+    if (personality === 'Savage but Fair') {
+      verdict = `Decent progress logged with '${winHighlight}', but you still left cognitive money on the table. Tighten your schedule boundaries so '${mistakeHighlight}' doesn't leak into tomorrow.`;
+    } else if (personality === 'Strict Professor') {
+      verdict = `Satisfactory progress observed. Core objectives met baseline standards. Eliminate secondary distractions to reach honors level.`;
+    } else if (personality === 'Sarcastic Comedian') {
+      verdict = `Look at you, almost functioning like a responsible adult! Keep this up and we might actually have to take your ambitions seriously.`;
+    } else {
+      verdict = `Good steady work today! You pushed through resistance and achieved '${winHighlight}'. Carry this positive momentum forward into tomorrow.`;
+    }
   } else {
-    verdict = overallScore >= 75
-      ? `Outstanding dedication today! You built serious momentum. Celebrate the win and carry this energy into tomorrow.`
-      : `Every setback is data. Today was rough, but recognizing where you lost control gives you the exact blueprint to bounce back strong tomorrow.`;
+    if (personality === 'Savage but Fair') {
+      verdict = `A remarkably disciplined day. You delivered on '${winHighlight}' and protected your focus. Don't let complacency ruin tomorrow's baseline.`;
+    } else if (personality === 'Strict Professor') {
+      verdict = `Exemplary rigor and adherence to methodology. Deliverables on '${winHighlight}' were executed with academic excellence.`;
+    } else if (personality === 'Sarcastic Comedian') {
+      verdict = `Wait, you actually did what you said you were going to do? Is this legal? Excellent performance—try not to shock us again tomorrow.`;
+    } else {
+      verdict = `Outstanding execution today! You showed high discipline by achieving '${winHighlight}'. Celebrate this win and keep elevating your standards.`;
+    }
   }
+
+  // Actionable tailored improvements
+  const improvements = [];
+  if (severeDistractionReported || rawDistractions) {
+    improvements.push(`Lock down your primary distraction: "${rawDistractions.slice(0, 50)}" by physically removing devices during focus hours.`);
+  } else {
+    improvements.push('Designate a protected 90-minute morning deep work block before opening communication channels.');
+  }
+
+  if (rawPostponed && !rawPostponed.toLowerCase().includes('none')) {
+    improvements.push(`Tackle your postponed priority: "${rawPostponed.slice(0, 50)}" first thing tomorrow morning.`);
+  } else {
+    improvements.push('Maintain an explicit written checklist and review each item before taking midday breaks.');
+  }
+
+  if (sleepHours < 7) {
+    improvements.push(`Commit to an earlier sleep window tonight to restore cognitive capacity (currently at ${sleepHours}h).`);
+  } else if (!hasExercise) {
+    improvements.push('Incorporate at least 30 minutes of aerobic exercise or brisk walking to stimulate dopamine and focus.');
+  } else {
+    improvements.push('Protect your evening wind-down routine by eliminating blue-light screens 45 minutes before sleep.');
+  }
+
+  const tomorrowChallenge = (rawPostponed && !rawPostponed.toLowerCase().includes('none'))
+    ? `Attack this postponed task within 90 minutes of waking up: "${rawPostponed.slice(0, 70)}".`
+    : rawMistake
+    ? `Explicitly prevent this recurring blunder tomorrow: "${rawMistake.slice(0, 70)}".`
+    : 'Complete your #1 highest-leverage task before checking social media or email tomorrow.';
 
   return {
     overallScore,
@@ -289,17 +421,11 @@ const generateDeterministicEvaluation = (entryData) => {
       consistency: { score: consistencyScore, reason: consistencyReason }
     },
     verdict,
-    biggestMistake: entryData.biggestMistake || entryData.distractions || 'Allowing trivial interruptions to derail deep focus hours.',
-    bestAchievement: entryData.achievements || entryData.completedTasks || 'Acknowledging reality and submitting today’s accountability review.',
-    improvements: [
-      'Time-box your most challenging task into an uninterrupted 90-minute morning sprint.',
-      'Place your phone in another room or on Airplane Mode during focus blocks.',
-      'Protect an 8-hour sleep window tonight to restore cognitive stamina.'
-    ],
-    tomorrowChallenge: entryData.postponedTasks
-      ? `Attack this postponed task first thing tomorrow: "${entryData.postponedTasks}".`
-      : 'Complete your highest-leverage priority before touching social media or email.',
-    summary: `Score: ${overallScore}/100. Status: ${performanceLabel}. Focus hours: ${totalFocusHours}h.`,
+    biggestMistake: rawMistake || rawDistractions || 'Allowing unstructured downtime to bleed into productive windows.',
+    bestAchievement: rawAch || rawTasks || 'Facing reality and submitting today’s accountability report.',
+    improvements,
+    tomorrowChallenge,
+    summary: `Score: ${overallScore}/100. Status: ${performanceLabel}. Focus: ${totalFocusHours}h. Sleep: ${sleepHours}h.`,
     confidence: 'high'
   };
 };
@@ -312,7 +438,6 @@ export const evaluateWeeklyReview = async (judgements, entries) => {
   const scores = judgements.map(j => j.overallScore);
   const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 
-  // Find best and worst day
   let best = judgements[0];
   let worst = judgements[0];
   for (const j of judgements) {
@@ -320,15 +445,12 @@ export const evaluateWeeklyReview = async (judgements, entries) => {
     if (j.overallScore < worst.overallScore) worst = j;
   }
 
-  // Synthesize common distractions
   const distractions = entries.map(e => e.distractions).filter(Boolean);
   const repeatedDistraction = distractions.length > 0 ? distractions[0] : 'Unstructured evening screen time';
 
-  // Postponed tasks
   const postponed = entries.map(e => e.postponedTasks).filter(Boolean);
   const commonUnfinished = postponed.length > 0 ? postponed[0] : 'Deep work sprint';
 
-  // Trends
   const productivityScores = judgements.map(j => j.categoryScores?.productivity?.score || 50);
   const disciplineScores = judgements.map(j => j.categoryScores?.discipline?.score || 50);
 
@@ -374,4 +496,3 @@ export const evaluateWeeklyReview = async (judgements, entries) => {
     dailyScores
   };
 };
-

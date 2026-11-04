@@ -69,11 +69,11 @@ export const SubmitActivityPage = () => {
   const [completedTasks, setCompletedTasks] = useState('');
   const [postponedTasks, setPostponedTasks] = useState('');
   const [distractions, setDistractions] = useState('');
-  const [workHours, setWorkHours] = useState(6);
-  const [studyHours, setStudyHours] = useState(2);
+  const [workHours, setWorkHours] = useState(0);
+  const [studyHours, setStudyHours] = useState(0);
   const [sleepHours, setSleepHours] = useState(7);
-  const [exercise, setExercise] = useState('Yes (45m workout)');
-  const [mood, setMood] = useState('Good');
+  const [exercise, setExercise] = useState('No');
+  const [mood, setMood] = useState('Average');
   const [biggestMistake, setBiggestMistake] = useState('');
   const [tomorrowPlan, setTomorrowPlan] = useState('');
   const [rawDayDescription, setRawDayDescription] = useState('');
@@ -89,6 +89,8 @@ export const SubmitActivityPage = () => {
       !completedTasks.trim() &&
       !rawDayDescription.trim() &&
       !postponedTasks.trim() &&
+      !distractions.trim() &&
+      !biggestMistake.trim() &&
       workHours === 0 &&
       studyHours === 0
     ) {

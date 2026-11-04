@@ -29,6 +29,8 @@ export const judgeDay = async (req, res, next) => {
       !completedTasks &&
       !rawDayDescription &&
       !postponedTasks &&
+      !distractions &&
+      !biggestMistake &&
       Number(workHours || 0) === 0 &&
       Number(studyHours || 0) === 0
     ) {
